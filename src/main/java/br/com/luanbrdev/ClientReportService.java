@@ -7,8 +7,10 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.bson.Document;
 
+import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 @ApplicationScoped
@@ -49,6 +51,22 @@ public class ClientReportService {
         var inserted = getCollection().insertOne(document);
 
         System.out.println("Pos insert" + inserted);
+    }
+
+    public List<ClientReportConfig> listByConfiguredTime() {
+        var now = LocalDateTime.now(ZoneId.of("UTC"));
+        return (List<ClientReportConfig>) getCollection().aggregate(Arrays.asList(
+                new Document("$addFields", new Document("dateNow", now)),
+                new Document("$addFields",
+                        new Document("timeInMillisecondsAggregate", new Document("$multiply", Arrays.asList("$waitingTimeInMinutes", 60000L)))),
+                new Document("$addFields", new Document("addedDateAggregate",
+                        new Document("$add", Arrays.asList("$lastExecution", "$timeInMillisecondsAggregate")))),
+                new Document("$addFields", new Document("shouldExecuteAggregate",
+                        new Document("$and", Arrays.asList(
+                                new Document("$gt", Arrays.asList("$dateNow", "$addedDateAggregate")),
+                                new Document("$eq", Arrays.asList("$active", true))
+                                )))),
+                new Document("$match", new Document("shouldExecuteAggregate", true)))).into(new ArrayList<ClientReportConfig>());
     }
 
     private MongoCollection getCollection() {

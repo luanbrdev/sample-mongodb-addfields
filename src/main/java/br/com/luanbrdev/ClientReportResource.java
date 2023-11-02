@@ -22,4 +22,10 @@ public class ClientReportResource {
         service.add(clientReportConfig);
         return list();
     }
+
+    @GET
+    @Path("scheduled")
+    public List<ClientReportConfig> listReportsScheduled() {
+        return service.listByConfiguredTime();
+    }
 }
