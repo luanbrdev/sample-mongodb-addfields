@@ -24,17 +24,7 @@ public class ClientReportService {
         try (MongoCursor<Document> cursor = getCollection().find().iterator()) {
             while (cursor.hasNext()) {
                 Document document = cursor.next();
-                ClientReportConfig reportConfig = new ClientReportConfig();
-
-                reportConfig.setId(document.getString("id"));
-                reportConfig.setName(document.getString("name"));
-                reportConfig.setLastExecution(document.getDate("lastExecution")
-                        .toInstant()
-                        .atZone(ZoneId.systemDefault())
-                        .toLocalDateTime());
-                reportConfig.setWaitingTimeInMinutes(document.getInteger("waitingTimeInMinutes"));
-                reportConfig.setActive(document.getBoolean("active"));
-                list.add(reportConfig);
+                buildResult(list, document);
             }
         }
         return list;
@@ -47,15 +37,13 @@ public class ClientReportService {
                 .append("waitingTimeInMinutes", reportConfig.getWaitingTimeInMinutes())
                 .append("active", reportConfig.isActive());
 
-        System.out.println("Pre Insert - " + document);
-        var inserted = getCollection().insertOne(document);
-
-        System.out.println("Pos insert" + inserted);
+        getCollection().insertOne(document);
     }
 
     public List<ClientReportConfig> listByConfiguredTime() {
+        List<ClientReportConfig> list = new ArrayList<>();
         var now = LocalDateTime.now(ZoneId.of("UTC"));
-        return (List<ClientReportConfig>) getCollection().aggregate(Arrays.asList(
+        var iterator = getCollection().aggregate(Arrays.asList(
                 new Document("$addFields", new Document("dateNow", now)),
                 new Document("$addFields",
                         new Document("timeInMillisecondsAggregate", new Document("$multiply", Arrays.asList("$waitingTimeInMinutes", 60000L)))),
@@ -65,8 +53,30 @@ public class ClientReportService {
                         new Document("$and", Arrays.asList(
                                 new Document("$gt", Arrays.asList("$dateNow", "$addedDateAggregate")),
                                 new Document("$eq", Arrays.asList("$active", true))
-                                )))),
-                new Document("$match", new Document("shouldExecuteAggregate", true)))).into(new ArrayList<ClientReportConfig>());
+                        )))),
+                new Document("$match", new Document("shouldExecuteAggregate", true)))).iterator();
+
+        try (MongoCursor<Document> cursor = iterator) {
+            while (cursor.hasNext()) {
+                Document document = cursor.next();
+                buildResult(list, document);
+            }
+        }
+        return list;
+    }
+
+    private static void buildResult(List<ClientReportConfig> list, Document document) {
+        ClientReportConfig reportConfig = new ClientReportConfig();
+
+        reportConfig.setId(document.get("_id").toString());
+        reportConfig.setName(document.getString("name"));
+        reportConfig.setLastExecution(document.getDate("lastExecution")
+                .toInstant()
+                .atZone(ZoneId.systemDefault())
+                .toLocalDateTime());
+        reportConfig.setWaitingTimeInMinutes(document.getInteger("waitingTimeInMinutes"));
+        reportConfig.setActive(document.getBoolean("active"));
+        list.add(reportConfig);
     }
 
     private MongoCollection getCollection() {
