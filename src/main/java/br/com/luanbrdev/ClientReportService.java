@@ -43,18 +43,26 @@ public class ClientReportService {
     public List<ClientReportConfig> listByConfiguredTime() {
         List<ClientReportConfig> list = new ArrayList<>();
         var now = LocalDateTime.now(ZoneId.of("UTC"));
+
+        var dateNow = new Document("dateNow", now);
+        var timeInMillisecondsAggregate = new Document("timeInMillisecondsAggregate",
+                new Document("$multiply", Arrays.asList("$waitingTimeInMinutes", 60000L)));
+        var addedDateAggregate = new Document("addedDateAggregate",
+                new Document("$add", Arrays.asList("$lastExecution", "$timeInMillisecondsAggregate")));
+
+        var shouldExecuteAggregate = new Document("shouldExecuteAggregate",
+                new Document("$and", Arrays.asList(
+                        new Document("$gt", Arrays.asList("$dateNow", "$addedDateAggregate")),
+                        new Document("$eq", Arrays.asList("$active", true))
+                )));
+        var match = new Document("shouldExecuteAggregate", true);
+
         var iterator = getCollection().aggregate(Arrays.asList(
-                new Document("$addFields", new Document("dateNow", now)),
-                new Document("$addFields",
-                        new Document("timeInMillisecondsAggregate", new Document("$multiply", Arrays.asList("$waitingTimeInMinutes", 60000L)))),
-                new Document("$addFields", new Document("addedDateAggregate",
-                        new Document("$add", Arrays.asList("$lastExecution", "$timeInMillisecondsAggregate")))),
-                new Document("$addFields", new Document("shouldExecuteAggregate",
-                        new Document("$and", Arrays.asList(
-                                new Document("$gt", Arrays.asList("$dateNow", "$addedDateAggregate")),
-                                new Document("$eq", Arrays.asList("$active", true))
-                        )))),
-                new Document("$match", new Document("shouldExecuteAggregate", true)))).iterator();
+                new Document("$addFields", dateNow),
+                new Document("$addFields", timeInMillisecondsAggregate),
+                new Document("$addFields", addedDateAggregate),
+                new Document("$addFields", shouldExecuteAggregate),
+                new Document("$match", match))).iterator();
 
         try (MongoCursor<Document> cursor = iterator) {
             while (cursor.hasNext()) {
